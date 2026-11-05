@@ -1,0 +1,64 @@
+
+version: 2
+
+models:
+  - name: dim_customer_360
+    description: "Gold-layer Customer 360 dimension with customer segments and health status."
+
+    columns:
+      - name: customer_id
+        description: "Unique customer identifier."
+        data_tests:
+          - unique
+          - not_null
+
+      - name: email
+        description: "Standardized customer email address."
+        data_tests:
+          - not_null
+
+      - name: annual_revenue
+        description: "Annual customer revenue."
+        data_tests:
+          - not_null
+          - dbt_utils.expression_is_true:
+              expression: ">= 0"
+
+      - name: account_status
+        data_tests:
+          - accepted_values:
+              arguments:
+                values:
+                  - Active
+                  - At Risk
+                  - Churned
+
+      - name: revenue_segment
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - SMB
+                  - Mid-Market
+                  - Enterprise
+
+      - name: engagement_segment
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - Highly Engaged
+                  - Moderately Engaged
+                  - Low Engagement
+
+      - name: customer_health_status
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - Active
+                  - At Risk
+                  - Churned

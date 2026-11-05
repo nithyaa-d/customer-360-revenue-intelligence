@@ -1,0 +1,10 @@
+
+customer_360_analytics:
+  target: dev
+
+  outputs:
+    dev:
+      type: duckdb
+      path: customer_360_analytics.duckdb
+      schema: main
+      threads: 4

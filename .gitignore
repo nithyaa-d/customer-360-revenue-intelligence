@@ -34,3 +34,11 @@ htmlcov/
 # OS
 .DS_Store
 Thumbs.db
+
+# DuckDB local database
+*.duckdb
+
+# dbt generated files and local configuration
+dbt_project/.user.yml
+dbt_project/logs/
+dbt_project/target/

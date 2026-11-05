@@ -49,10 +49,81 @@ def answer_question(question: str) -> dict:
         }
 
     # -------------------------------------------------
-    # 1. Total customers
+    # 1. Churn risk predictions
+    # Check this before general customer-count questions.
     # -------------------------------------------------
 
-    if "how many customers" in question or "total customers" in question:
+    if (
+        "churn" in question
+        or "high risk" in question
+        or "medium risk" in question
+        or "low risk" in question
+    ):
+
+        if not PREDICTIONS_FILE.exists():
+            return {
+                "answer": (
+                    "Churn predictions are unavailable. "
+                    "Run the churn scoring pipeline first."
+                ),
+                "data": pd.DataFrame(),
+            }
+
+        predictions = pd.read_csv(PREDICTIONS_FILE)
+
+        if "high" in question:
+            selected = predictions[
+                predictions["risk_category"] == "High"
+            ]
+
+            label = "high"
+
+        elif "medium" in question:
+            selected = predictions[
+                predictions["risk_category"] == "Medium"
+            ]
+
+            label = "medium"
+
+        elif "low" in question:
+            selected = predictions[
+                predictions["risk_category"] == "Low"
+            ]
+
+            label = "low"
+
+        else:
+            selected = predictions
+            label = "all"
+
+        if label == "all":
+            answer = (
+                f"The churn model has scored "
+                f"{len(selected):,} customers."
+            )
+        else:
+            answer = (
+                f"{len(selected):,} customers are classified "
+                f"as {label} churn risk by the demonstration model."
+            )
+
+        return {
+            "answer": answer,
+            "data": selected.sort_values(
+                "churn_probability",
+                ascending=False,
+            ).head(10),
+        }
+
+    # -------------------------------------------------
+    # 2. Total customer count
+    # -------------------------------------------------
+
+    if (
+        "how many customers" in question
+        or "total customers" in question
+        or "customer count" in question
+    ):
 
         result = execute_query("""
             SELECT COUNT(*) AS total_customers
@@ -67,20 +138,23 @@ def answer_question(question: str) -> dict:
         }
 
     # -------------------------------------------------
-    # 2. Highest revenue country
+    # 3. Country revenue analysis
     # -------------------------------------------------
 
     if (
-        "highest revenue country" in question
-        or "top country" in question
-        or "revenue by country" in question
+        "country" in question
+        and any(
+            term in question
+            for term in ["highest", "top", "revenue", "country"]
+        )
     ):
 
         result = execute_query("""
             SELECT
                 country,
                 COUNT(DISTINCT customer_id) AS customers,
-                SUM(annual_revenue) AS total_revenue
+                SUM(annual_revenue) AS total_revenue,
+                ROUND(AVG(annual_revenue), 2) AS average_revenue
             FROM main.dim_customer_360
             GROUP BY country
             ORDER BY total_revenue DESC
@@ -98,13 +172,15 @@ def answer_question(question: str) -> dict:
         }
 
     # -------------------------------------------------
-    # 3. Highest revenue industry
+    # 4. Industry revenue analysis
     # -------------------------------------------------
 
-    if "industry" in question and (
-        "highest" in question
-        or "top" in question
-        or "revenue" in question
+    if (
+        "industry" in question
+        and any(
+            term in question
+            for term in ["highest", "top", "revenue", "average"]
+        )
     ):
 
         result = execute_query("""
@@ -130,10 +206,13 @@ def answer_question(question: str) -> dict:
         }
 
     # -------------------------------------------------
-    # 4. Acquisition channel performance
+    # 5. Acquisition channel performance
     # -------------------------------------------------
 
-    if "acquisition channel" in question or "marketing channel" in question:
+    if (
+        "acquisition channel" in question
+        or "marketing channel" in question
+    ):
 
         result = execute_query("""
             SELECT
@@ -148,17 +227,20 @@ def answer_question(question: str) -> dict:
 
         return {
             "answer": (
-                "Here is the revenue and customer performance "
+                "Here is the customer and revenue performance "
                 "for each acquisition channel."
             ),
             "data": result,
         }
 
     # -------------------------------------------------
-    # 5. Customer account status
+    # 6. Customer account status
     # -------------------------------------------------
 
-    if "customer status" in question or "account status" in question:
+    if (
+        "customer status" in question
+        or "account status" in question
+    ):
 
         result = execute_query("""
             SELECT
@@ -175,44 +257,14 @@ def answer_question(question: str) -> dict:
         }
 
     # -------------------------------------------------
-    # 6. Customer churn risk predictions
-    # -------------------------------------------------
-
-    if "churn risk" in question or "high risk" in question:
-
-        if not PREDICTIONS_FILE.exists():
-            return {
-                "answer": (
-                    "Churn predictions are unavailable. "
-                    "Run the churn scoring pipeline first."
-                ),
-                "data": pd.DataFrame(),
-            }
-
-        predictions = pd.read_csv(PREDICTIONS_FILE)
-
-        high_risk = predictions[
-            predictions["risk_category"] == "High"
-        ]
-
-        count = len(high_risk)
-
-        return {
-            "answer": (
-                f"{count:,} customers are currently classified "
-                "as high churn risk by the demonstration model."
-            ),
-            "data": high_risk.sort_values(
-                "churn_probability",
-                ascending=False,
-            ).head(10),
-        }
-
-    # -------------------------------------------------
     # 7. Top customers by revenue
     # -------------------------------------------------
 
-    if "top customers" in question or "highest paying customers" in question:
+    if (
+        "top customers" in question
+        or "highest paying customers" in question
+        or "highest revenue customers" in question
+    ):
 
         result = execute_query("""
             SELECT
@@ -233,7 +285,7 @@ def answer_question(question: str) -> dict:
         }
 
     # -------------------------------------------------
-    # Unsupported questions
+    # 8. Unsupported questions
     # -------------------------------------------------
 
     return {

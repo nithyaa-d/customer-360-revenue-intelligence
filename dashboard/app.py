@@ -1,5 +1,5 @@
 
-"""Customer 360 Revenue Intelligence Dashboard."""
+"""Customer 360 | Revenue Intelligence Dashboard."""
 
 from pathlib import Path
 
@@ -8,9 +8,22 @@ import plotly.express as px
 import streamlit as st
 
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
-DATA_FILE = PROJECT_ROOT / "data" / "processed" / "customer_360.csv"
+# =========================================================
+# CONFIGURATION
+# =========================================================
 
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+
+DATA_FILE = (
+    PROJECT_ROOT / "data" / "processed" / "customer_360.csv"
+)
+
+FILTER_COLUMNS = [
+    "country",
+    "industry",
+    "acquisition_channel",
+    "account_status",
+]
 
 st.set_page_config(
     page_title="Customer 360 | Revenue Intelligence",
@@ -20,141 +33,155 @@ st.set_page_config(
 )
 
 
-# ---------------------------------------------------------
-# APPLICATION STYLING
-# ---------------------------------------------------------
+# =========================================================
+# CUSTOM CSS
+# =========================================================
 
 st.markdown(
     """
     <style>
-        .stApp {
-            background-color: #F5F7FB;
-        }
 
-        .block-container {
-            padding-top: 1.5rem;
-            padding-bottom: 3rem;
-            max-width: 1500px;
-        }
+    .stApp {
+        background-color: #F4F7FB;
+    }
 
-        [data-testid="stHeader"] {
-            background: transparent;
-        }
+    .block-container {
+        max-width: 1500px;
+        padding-top: 2rem;
+        padding-bottom: 3rem;
+    }
 
-        .main-header {
-            background: linear-gradient(120deg, #142B4A, #234D78);
-            padding: 30px 34px;
-            border-radius: 16px;
-            margin-bottom: 25px;
-            color: white;
-        }
+    [data-testid="stHeader"] {
+        background: transparent;
+    }
 
-        .main-header h1 {
-            color: white;
-            font-size: 31px;
-            font-weight: 700;
-            margin: 5px 0 8px 0;
-        }
+    /* Dashboard header */
 
-        .main-header p {
-            color: #D5E2F1;
-            font-size: 14px;
-            margin: 0;
-        }
+    .main-header {
+        background: linear-gradient(120deg, #142B4A, #234D78);
+        padding: 34px 38px;
+        border-radius: 16px;
+        margin-bottom: 28px;
+    }
 
-        .header-tag {
-            color: #93C5FD;
-            font-size: 11px;
-            font-weight: 700;
-            letter-spacing: 2px;
-        }
+    .header-tag {
+        color: #93C5FD;
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 2px;
+        margin-bottom: 10px;
+    }
 
-        .section-title {
-            color: #1E293B;
-            font-size: 20px;
-            font-weight: 700;
-            margin-top: 12px;
-            margin-bottom: 15px;
-        }
+    .main-header h1 {
+        color: #FFFFFF !important;
+        font-size: 32px !important;
+        font-weight: 700 !important;
+        margin: 0 0 10px 0 !important;
+        padding: 0 !important;
+    }
 
-        .kpi-card {
-            background: white;
-            border: 1px solid #E7ECF3;
-            border-radius: 13px;
-            padding: 19px 20px;
-            min-height: 120px;
-            box-shadow: 0 2px 8px rgba(15, 23, 42, 0.03);
-        }
+    .main-header p {
+        color: #E2EAF5 !important;
+        font-size: 14px !important;
+        margin: 0 !important;
+    }
 
-        .kpi-label {
-            color: #64748B;
-            font-size: 12px;
-            font-weight: 600;
-            margin-bottom: 10px;
-        }
+    /* Section headings */
 
-        .kpi-value {
-            color: #172B4D;
-            font-size: 27px;
-            font-weight: 750;
-            margin-bottom: 5px;
-        }
+    .section-title {
+        color: #1E293B;
+        font-size: 21px;
+        font-weight: 700;
+        margin-top: 22px;
+        margin-bottom: 16px;
+    }
 
-        .kpi-caption {
-            color: #94A3B8;
-            font-size: 11px;
-        }
+    /* KPI cards */
 
-        div[data-testid="stExpander"] {
-            background: white;
-            border: 1px solid #E2E8F0;
-            border-radius: 12px;
-        }
+    .kpi-card {
+        background: #FFFFFF;
+        border: 1px solid #E2E8F0;
+        border-radius: 13px;
+        padding: 20px;
+        min-height: 125px;
+        box-shadow: 0 2px 8px rgba(15, 23, 42, 0.04);
+    }
 
-        div[data-testid="stButton"] button {
-            border-radius: 8px;
-            font-weight: 600;
-            min-height: 42px;
-        }
+    .kpi-label {
+        color: #64748B;
+        font-size: 12px;
+        font-weight: 700;
+        margin-bottom: 12px;
+    }
 
-        div[data-testid="stDataFrame"] {
-            border: 1px solid #E2E8F0;
-            border-radius: 10px;
-            overflow: hidden;
-        }
+    .kpi-value {
+        color: #172B4D;
+        font-size: 27px;
+        font-weight: 750;
+        margin-bottom: 7px;
+    }
 
-        .footer {
-            text-align: center;
-            color: #94A3B8;
-            font-size: 11px;
-            padding-top: 25px;
-        }
+    .kpi-caption {
+        color: #64748B;
+        font-size: 11px;
+    }
 
-        #MainMenu {
-            visibility: hidden;
-        }
+    /* Filter panel */
 
-        footer {
-            visibility: hidden;
-        }
+    div[data-testid="stExpander"] {
+        background: #FFFFFF;
+        border: 1px solid #E2E8F0;
+        border-radius: 12px;
+    }
+
+    div[data-testid="stExpander"] summary {
+        color: #1E293B;
+        font-weight: 600;
+    }
+
+    /* Buttons */
+
+    div[data-testid="stButton"] button {
+        border-radius: 8px;
+        min-height: 42px;
+        font-weight: 600;
+    }
+
+    /* Footer */
+
+    .footer {
+        text-align: center;
+        color: #64748B;
+        font-size: 11px;
+        padding-top: 30px;
+        line-height: 1.8;
+    }
+
+    #MainMenu {
+        visibility: hidden;
+    }
+
+    footer {
+        visibility: hidden;
+    }
+
     </style>
     """,
     unsafe_allow_html=True,
 )
 
 
-# ---------------------------------------------------------
-# DATA LOADING
-# ---------------------------------------------------------
+# =========================================================
+# LOAD CUSTOMER DATA
+# =========================================================
 
 @st.cache_data
 def load_customer_data():
-    """Load the Gold Customer 360 dataset."""
 
     if not DATA_FILE.exists():
         raise FileNotFoundError(
             "Customer 360 dataset not found. "
-            "Run the ingestion, Silver and Gold pipelines first."
+            "Run the ingestion and transformation pipelines first."
         )
 
     dataframe = pd.read_csv(DATA_FILE)
@@ -167,14 +194,15 @@ def load_customer_data():
     return dataframe
 
 
-def format_currency(value):
-    """Format revenue values in USD."""
+# =========================================================
+# HELPER FUNCTIONS
+# =========================================================
 
+def format_currency(value):
     return f"${value:,.0f}"
 
 
 def render_kpi(label, value, caption):
-    """Render a reusable KPI card."""
 
     st.markdown(
         f"""
@@ -189,12 +217,11 @@ def render_kpi(label, value, caption):
 
 
 def style_chart(fig):
-    """Apply consistent styling to Plotly charts."""
 
     fig.update_layout(
         template="plotly_white",
-        paper_bgcolor="white",
-        plot_bgcolor="white",
+        paper_bgcolor="#FFFFFF",
+        plot_bgcolor="#FFFFFF",
         font=dict(
             family="Arial",
             color="#334155",
@@ -204,116 +231,118 @@ def style_chart(fig):
             size=15,
             color="#1E293B",
         ),
-        margin=dict(l=15, r=15, t=55, b=20),
+        margin=dict(
+            l=15,
+            r=15,
+            t=55,
+            b=20,
+        ),
         legend_title_text="",
+    )
+
+    fig.update_xaxes(
+        tickfont=dict(color="#475569"),
+        gridcolor="#F1F5F9",
+    )
+
+    fig.update_yaxes(
+        tickfont=dict(color="#475569"),
+        gridcolor="#E9EEF5",
     )
 
     return fig
 
 
-# ---------------------------------------------------------
+# =========================================================
 # FILTER MANAGEMENT
-# ---------------------------------------------------------
+# =========================================================
 
 def initialize_filter_state(dataframe):
-    """Initialize filter selections and applied filters."""
 
-    filter_columns = [
-        "country",
-        "industry",
-        "acquisition_channel",
-        "account_status",
-    ]
+    for column in FILTER_COLUMNS:
 
-    for column in filter_columns:
-        options = sorted(dataframe[column].dropna().unique().tolist())
+        options = sorted(
+            dataframe[column].dropna().unique().tolist()
+        )
+
+        st.session_state[f"all_{column}"] = options
 
         if f"draft_{column}" not in st.session_state:
-            st.session_state[f"draft_{column}"] = options
+            st.session_state[f"draft_{column}"] = options.copy()
 
         if f"applied_{column}" not in st.session_state:
-            st.session_state[f"applied_{column}"] = options
+            st.session_state[f"applied_{column}"] = options.copy()
 
 
 def apply_filters():
-    """Apply selected filters to the dashboard."""
 
-    for column in [
-        "country",
-        "industry",
-        "acquisition_channel",
-        "account_status",
-    ]:
+    for column in FILTER_COLUMNS:
+
         st.session_state[f"applied_{column}"] = (
-            st.session_state[f"draft_{column}"]
+            st.session_state[f"draft_{column}"].copy()
         )
 
 
 def reset_filters():
-    """Restore all filters to their default selections."""
 
-    for column in [
-        "country",
-        "industry",
-        "acquisition_channel",
-        "account_status",
-    ]:
+    for column in FILTER_COLUMNS:
+
         options = st.session_state[f"all_{column}"]
 
-        st.session_state[f"draft_{column}"] = options
-        st.session_state[f"applied_{column}"] = options
+        st.session_state[f"draft_{column}"] = options.copy()
+        st.session_state[f"applied_{column}"] = options.copy()
 
 
-# ---------------------------------------------------------
-# MAIN DASHBOARD
-# ---------------------------------------------------------
+# =========================================================
+# MAIN APPLICATION
+# =========================================================
 
 def main():
 
-    # Header
+    # -----------------------------------------------------
+    # HEADER
+    # -----------------------------------------------------
+
     st.markdown(
         """
         <div class="main-header">
             <div class="header-tag">CUSTOMER ANALYTICS PLATFORM</div>
             <h1>Customer 360 | Revenue Intelligence</h1>
-            <p>
-                A unified view of customer performance, revenue,
-                engagement and retention insights.
-            </p>
+            <p>A unified view of customer performance, revenue,
+            engagement and retention insights.</p>
         </div>
         """,
         unsafe_allow_html=True,
     )
 
+    # -----------------------------------------------------
+    # DATA
+    # -----------------------------------------------------
+
     try:
         dataframe = load_customer_data()
+
     except FileNotFoundError as error:
         st.error(str(error))
         st.stop()
 
     initialize_filter_state(dataframe)
 
-    for column in [
-        "country",
-        "industry",
-        "acquisition_channel",
-        "account_status",
-    ]:
-        st.session_state[f"all_{column}"] = sorted(
-            dataframe[column].dropna().unique().tolist()
-        )
+    # -----------------------------------------------------
+    # FILTER PANEL
+    # -----------------------------------------------------
 
-    # Filter panel
-    with st.expander("⚙️  Dashboard Filters", expanded=False):
+    with st.expander("⚙️ Dashboard Filters", expanded=False):
 
         st.caption(
-            "Select your criteria and click Apply Filters "
-            "to refresh the dashboard."
+            "Select the required values and click Apply Filters "
+            "to update the dashboard."
         )
 
-        col1, col2 = st.columns(2)
+        left, right = st.columns(2)
 
-        with col1:
+        with left:
+
             st.multiselect(
                 "Country",
                 options=st.session_state["all_country"],
@@ -322,11 +351,14 @@ def main():
 
             st.multiselect(
                 "Acquisition Channel",
-                options=st.session_state["all_acquisition_channel"],
+                options=st.session_state[
+                    "all_acquisition_channel"
+                ],
                 key="draft_acquisition_channel",
             )
 
-        with col2:
+        with right:
+
             st.multiselect(
                 "Industry",
                 options=st.session_state["all_industry"],
@@ -339,32 +371,33 @@ def main():
                 key="draft_account_status",
             )
 
-        button_col1, button_col2, _ = st.columns([1, 1, 4])
+        button_left, button_right, _ = st.columns([1, 1, 4])
 
-        with button_col1:
+        with button_left:
+
             st.button(
                 "Apply Filters",
                 type="primary",
-                use_container_width=True,
+                width="stretch",
                 on_click=apply_filters,
             )
 
-        with button_col2:
+        with button_right:
+
             st.button(
                 "Reset Filters",
-                use_container_width=True,
+                width="stretch",
                 on_click=reset_filters,
             )
 
-    # Apply committed selections
+    # -----------------------------------------------------
+    # FILTERED DATA
+    # -----------------------------------------------------
+
     filtered = dataframe.copy()
 
-    for column in [
-        "country",
-        "industry",
-        "acquisition_channel",
-        "account_status",
-    ]:
+    for column in FILTER_COLUMNS:
+
         filtered = filtered[
             filtered[column].isin(
                 st.session_state[f"applied_{column}"]
@@ -372,20 +405,25 @@ def main():
         ]
 
     if filtered.empty:
+
         st.warning(
-            "No customers match the applied filters. "
-            "Open Dashboard Filters and adjust your selection."
+            "No customers match the selected filters. "
+            "Please adjust your filters."
         )
+
         st.stop()
 
-    # KPI calculations
+    # -----------------------------------------------------
+    # KPI CALCULATIONS
+    # -----------------------------------------------------
+
     total_customers = filtered["customer_id"].nunique()
 
     total_revenue = filtered["annual_revenue"].sum()
 
     average_revenue = (
         total_revenue / total_customers
-        if total_customers else 0
+        if total_customers > 0 else 0
     )
 
     churned_customers = int(
@@ -394,14 +432,13 @@ def main():
 
     churn_rate = (
         churned_customers / total_customers * 100
-        if total_customers else 0
+        if total_customers > 0 else 0
     )
 
-    active_customers = int(
-        (filtered["account_status"] == "Active").sum()
-    )
+    # -----------------------------------------------------
+    # BUSINESS OVERVIEW
+    # -----------------------------------------------------
 
-    # Business overview
     st.markdown(
         '<div class="section-title">Business Overview</div>',
         unsafe_allow_html=True,
@@ -420,7 +457,7 @@ def main():
         render_kpi(
             "ANNUAL CUSTOMER REVENUE",
             format_currency(total_revenue),
-            "Synthetic annual revenue (USD)",
+            "Illustrative annual revenue (USD)",
         )
 
     with col3:
@@ -437,15 +474,16 @@ def main():
             f"{churned_customers:,} churned customers",
         )
 
-    st.write("")
+    # -----------------------------------------------------
+    # REVENUE PERFORMANCE
+    # -----------------------------------------------------
 
-    # Revenue performance
     st.markdown(
         '<div class="section-title">Revenue Performance</div>',
         unsafe_allow_html=True,
     )
 
-    col1, col2 = st.columns(2)
+    left, right = st.columns(2)
 
     country_revenue = (
         filtered.groupby("country", as_index=False)
@@ -456,7 +494,8 @@ def main():
         .sort_values("total_revenue", ascending=False)
     )
 
-    with col1:
+    with left:
+
         fig_country = px.bar(
             country_revenue,
             x="country",
@@ -470,14 +509,16 @@ def main():
             },
         )
 
-        fig_country.update_layout(xaxis_title=None)
         st.plotly_chart(
             style_chart(fig_country),
-            use_container_width=True,
+            width="stretch",
         )
 
     channel_revenue = (
-        filtered.groupby("acquisition_channel", as_index=False)
+        filtered.groupby(
+            "acquisition_channel",
+            as_index=False,
+        )
         .agg(
             total_revenue=("annual_revenue", "sum"),
             customers=("customer_id", "nunique"),
@@ -485,7 +526,8 @@ def main():
         .sort_values("total_revenue", ascending=False)
     )
 
-    with col2:
+    with right:
+
         fig_channel = px.bar(
             channel_revenue,
             x="acquisition_channel",
@@ -499,27 +541,32 @@ def main():
             },
         )
 
-        fig_channel.update_layout(xaxis_title=None)
         st.plotly_chart(
             style_chart(fig_channel),
-            use_container_width=True,
+            width="stretch",
         )
 
-    # Customer segmentation
+    # -----------------------------------------------------
+    # CUSTOMER SEGMENTATION
+    # -----------------------------------------------------
+
     st.markdown(
         '<div class="section-title">Customer Segmentation</div>',
         unsafe_allow_html=True,
     )
 
-    col1, col2 = st.columns(2)
+    left, right = st.columns(2)
 
     industry_revenue = (
         filtered.groupby("industry", as_index=False)
-        .agg(total_revenue=("annual_revenue", "sum"))
+        .agg(
+            total_revenue=("annual_revenue", "sum"),
+        )
         .sort_values("total_revenue", ascending=False)
     )
 
-    with col1:
+    with left:
+
         fig_industry = px.bar(
             industry_revenue,
             x="industry",
@@ -531,7 +578,7 @@ def main():
 
         st.plotly_chart(
             style_chart(fig_industry),
-            use_container_width=True,
+            width="stretch",
         )
 
     status_summary = (
@@ -541,7 +588,8 @@ def main():
         .reset_index(name="customer_count")
     )
 
-    with col2:
+    with right:
+
         fig_status = px.pie(
             status_summary,
             names="account_status",
@@ -557,18 +605,28 @@ def main():
 
         st.plotly_chart(
             style_chart(fig_status),
-            use_container_width=True,
+            width="stretch",
         )
 
-    # Customer value
+    # -----------------------------------------------------
+    # CUSTOMER VALUE DISTRIBUTION
+    # -----------------------------------------------------
+
     st.markdown(
         '<div class="section-title">Customer Value Distribution</div>',
         unsafe_allow_html=True,
     )
 
+    value_order = [
+        "Low Value",
+        "Medium Value",
+        "High Value",
+    ]
+
     value_summary = (
         filtered["customer_value_segment"]
         .value_counts()
+        .reindex(value_order, fill_value=0)
         .rename_axis("customer_value_segment")
         .reset_index(name="customer_count")
     )
@@ -580,11 +638,14 @@ def main():
         title="Customers by Value Segment",
         text_auto=True,
         color="customer_value_segment",
-        color_discrete_sequence=[
-            "#3478C7",
-            "#17A589",
-            "#8064A2",
-        ],
+        category_orders={
+            "customer_value_segment": value_order,
+        },
+        color_discrete_map={
+            "Low Value": "#3478C7",
+            "Medium Value": "#17A589",
+            "High Value": "#8064A2",
+        },
     )
 
     fig_value.update_layout(
@@ -595,10 +656,13 @@ def main():
 
     st.plotly_chart(
         style_chart(fig_value),
-        use_container_width=True,
+        width="stretch",
     )
 
-    # Customer explorer
+    # -----------------------------------------------------
+    # CUSTOMER 360 EXPLORER
+    # -----------------------------------------------------
+
     st.markdown(
         '<div class="section-title">Customer 360 Explorer</div>',
         unsafe_allow_html=True,
@@ -612,17 +676,21 @@ def main():
     display_data = filtered.copy()
 
     if search:
-        search = search.lower()
+
+        search_value = search.lower()
 
         display_data = display_data[
-            display_data["customer_id"].str.lower().str.contains(
-                search, na=False
+            display_data["customer_id"].astype(str).str.lower().str.contains(
+                search_value,
+                na=False,
             )
-            | display_data["customer_name"].str.lower().str.contains(
-                search, na=False
+            | display_data["customer_name"].astype(str).str.lower().str.contains(
+                search_value,
+                na=False,
             )
-            | display_data["country"].str.lower().str.contains(
-                search, na=False
+            | display_data["country"].astype(str).str.lower().str.contains(
+                search_value,
+                na=False,
             )
         ]
 
@@ -642,7 +710,8 @@ def main():
     ]
 
     available_columns = [
-        column for column in display_columns
+        column
+        for column in display_columns
         if column in display_data.columns
     ]
 
@@ -656,25 +725,24 @@ def main():
             "annual_revenue",
             ascending=False,
         ),
-        use_container_width=True,
+        width="stretch",
         hide_index=True,
     )
 
-    # Footer
+    # -----------------------------------------------------
+    # FOOTER
+    # -----------------------------------------------------
+
     st.markdown(
         """
         <div class="footer">
             CUSTOMER 360 REVENUE INTELLIGENCE
-            &nbsp; | &nbsp; Portfolio Project
-            &nbsp; | &nbsp; Powered by Python, Pandas, Plotly & Streamlit
-            <br><br>
-            Demonstration using synthetic customer data.
-            Revenue figures are illustrative, not actual business results.
+            | PORTFOLIO PROJECT
+            | PYTHON · PANDAS · PLOTLY · STREAMLIT
         </div>
         """,
         unsafe_allow_html=True,
     )
-
 
 if __name__ == "__main__":
     main()

@@ -1,3 +1,4 @@
+
 """Generate synthetic CRM customer data for the portfolio project."""
 
 from pathlib import Path
@@ -11,19 +12,22 @@ def generate_customers(number_of_customers: int = 1000) -> pd.DataFrame:
 
     rng = np.random.default_rng(seed=42)
 
-    countries = ["Sweden", "Germany", "United Kingdom", "India", "France",
-                 "Netherlands", "Norway", "Denmark", "United States"]
+    countries = [
+        "Sweden", "Germany", "United Kingdom", "India", "France",
+        "Netherlands", "Norway", "Denmark", "United States"
+    ]
 
-    industries = ["Technology", "Retail", "Manufacturing", "Finance",
-                  "Healthcare", "Telecommunications", "Education"]
+    industries = [
+        "Technology", "Retail", "Manufacturing", "Finance",
+        "Healthcare", "Telecommunications", "Education"
+    ]
 
     acquisition_channels = [
         "Organic Search", "Paid Search", "Referral",
         "Social Media", "Email Campaign", "Events"
     ]
 
-    account_statuses = ["Active", "At Risk", "Churned"]
-
+    # Generate customer signup dates
     signup_dates = pd.to_datetime(
         rng.choice(
             pd.date_range("2022-01-01", "2026-10-31"),
@@ -31,19 +35,50 @@ def generate_customers(number_of_customers: int = 1000) -> pd.DataFrame:
         )
     )
 
-    activity_offsets = rng.integers(0, 365, size=number_of_customers)
+    # Generate customer activity dates
+    activity_offsets = rng.integers(
+        0, 365, size=number_of_customers
+    )
 
     last_activity_dates = signup_dates + pd.to_timedelta(
         activity_offsets, unit="D"
     )
 
+    reference_date = pd.Timestamp("2026-11-05")
+
     last_activity_dates = pd.to_datetime(
         [
-            min(date, pd.Timestamp("2026-11-05"))
+            min(date, reference_date)
             for date in last_activity_dates
         ]
     )
 
+    # Generate realistic synthetic churn behaviour
+    days_since_activity = (
+        reference_date - last_activity_dates
+    ).days
+
+    # Longer inactivity increases churn probability
+    churn_probability = 1 / (
+        1 + np.exp(-(days_since_activity - 150) / 45)
+    )
+
+    is_churned = (
+        rng.random(number_of_customers) < churn_probability
+    )
+
+    is_at_risk = (
+        (~is_churned)
+        & (days_since_activity >= 90)
+    )
+
+    account_status = np.where(
+        is_churned,
+        "Churned",
+        np.where(is_at_risk, "At Risk", "Active")
+    )
+
+    # Generate customer identifiers
     customer_ids = [
         f"CUST-{number:05d}"
         for number in range(1, number_of_customers + 1)
@@ -54,6 +89,7 @@ def generate_customers(number_of_customers: int = 1000) -> pd.DataFrame:
         for number in range(1, number_of_customers + 1)
     ]
 
+    # Build the customer dataset
     dataframe = pd.DataFrame({
         "customer_id": customer_ids,
         "customer_name": customer_names,
@@ -71,11 +107,7 @@ def generate_customers(number_of_customers: int = 1000) -> pd.DataFrame:
         "acquisition_channel": rng.choice(
             acquisition_channels, size=number_of_customers
         ),
-        "account_status": rng.choice(
-            account_statuses,
-            size=number_of_customers,
-            p=[0.70, 0.20, 0.10]
-        ),
+        "account_status": account_status,
     })
 
     return dataframe
@@ -95,6 +127,9 @@ def main() -> None:
 
     print(f"Generated {len(dataframe)} synthetic customers.")
     print(f"Saved dataset to: {output_path}")
+
+    print("\nCustomer status distribution:")
+    print(dataframe["account_status"].value_counts())
 
 
 if __name__ == "__main__":

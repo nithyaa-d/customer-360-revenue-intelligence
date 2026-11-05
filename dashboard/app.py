@@ -8,6 +8,8 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 
+from ai_assistant.query_engine import answer_question
+
 
 # =========================================================
 # CONFIGURATION
@@ -26,6 +28,15 @@ FILTER_COLUMNS = [
     "industry",
     "acquisition_channel",
     "account_status",
+]
+
+SUGGESTED_QUESTIONS = [
+    "How many customers do we have?",
+    "Which country has the highest revenue?",
+    "Which industry has the highest revenue?",
+    "How many customers are high churn risk?",
+    "Show acquisition channel performance",
+    "Show the top customers by revenue",
 ]
 
 st.set_page_config(
@@ -138,6 +149,24 @@ st.markdown(
         border-radius: 8px;
         min-height: 42px;
         font-weight: 600;
+    }
+
+    .assistant-intro {
+        background: #FFFFFF;
+        border: 1px solid #E2E8F0;
+        border-radius: 13px;
+        padding: 22px;
+        margin-bottom: 20px;
+    }
+
+    .assistant-intro h3 {
+        color: #172B4D;
+        margin-top: 0;
+    }
+
+    .assistant-intro p {
+        color: #64748B;
+        margin-bottom: 0;
     }
 
     .footer {
@@ -310,7 +339,6 @@ def initialize_filter_state(dataframe):
         if applied_key not in st.session_state:
             st.session_state[applied_key] = options.copy()
 
-        # Keep selections valid if source data changes
         st.session_state[draft_key] = [
             value
             for value in st.session_state[draft_key]
@@ -344,48 +372,10 @@ def reset_filters():
 
 
 # =========================================================
-# MAIN APPLICATION
+# DASHBOARD TAB
 # =========================================================
 
-def main():
-
-    # -----------------------------------------------------
-    # HEADER
-    # -----------------------------------------------------
-
-    st.markdown(
-        """
-        <div class="main-header">
-            <div class="header-tag">
-                CUSTOMER ANALYTICS PLATFORM
-            </div>
-            <h1>Customer 360 | Revenue Intelligence</h1>
-            <p>
-                A unified view of customer performance, revenue,
-                engagement and predictive retention insights.
-            </p>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    # -----------------------------------------------------
-    # LOAD DATA
-    # -----------------------------------------------------
-
-    try:
-
-        dataframe, revenue_mart = load_customer_data()
-
-    except (FileNotFoundError, duckdb.Error) as error:
-
-        st.error(str(error))
-        st.stop()
-
-    if dataframe.empty:
-
-        st.warning("No customer records are available.")
-        st.stop()
+def render_dashboard(dataframe, revenue_mart):
 
     initialize_filter_state(dataframe)
 
@@ -464,13 +454,11 @@ def main():
         ]
 
     if filtered.empty:
-
         st.warning(
             "No customers match the selected filters. "
             "Please adjust your filters."
         )
-
-        st.stop()
+        return
 
     # -----------------------------------------------------
     # BUSINESS OVERVIEW
@@ -502,7 +490,6 @@ def main():
     col1, col2, col3, col4 = st.columns(4)
 
     with col1:
-
         render_kpi(
             "TOTAL CUSTOMERS",
             f"{total_customers:,}",
@@ -510,7 +497,6 @@ def main():
         )
 
     with col2:
-
         render_kpi(
             "ANNUAL CUSTOMER REVENUE",
             format_currency(total_revenue),
@@ -518,7 +504,6 @@ def main():
         )
 
     with col3:
-
         render_kpi(
             "AVERAGE REVENUE / CUSTOMER",
             format_currency(average_revenue),
@@ -526,7 +511,6 @@ def main():
         )
 
     with col4:
-
         render_kpi(
             "SOURCE CHURN RATE",
             f"{churn_rate:.1f}%",
@@ -542,7 +526,6 @@ def main():
         unsafe_allow_html=True,
     )
 
-    # Revenue by country: filtered Customer 360 data
     country_revenue = (
         filtered.groupby("country", as_index=False)
         .agg(
@@ -552,7 +535,6 @@ def main():
         .sort_values("total_revenue", ascending=False)
     )
 
-    # Revenue by acquisition channel
     channel_revenue = (
         filtered.groupby("acquisition_channel", as_index=False)
         .agg(
@@ -615,34 +597,39 @@ def main():
 
     st.caption(
         "Aggregated business metrics from the dbt Gold revenue mart. "
-        "The figures below reflect the complete mart, independent "
+        "The figures below reflect the complete dataset, independent "
         "of the dashboard filters."
     )
 
     if not revenue_mart.empty:
 
-        mart_revenue = revenue_mart["total_annual_revenue"].sum()
+        mart_revenue = revenue_mart[
+            "total_annual_revenue"
+        ].sum()
 
-        mart_customers = revenue_mart["total_customers"].sum()
+        # Count unique customers from the Customer 360 dimension.
+        # The three-dimensional revenue mart can contain the same
+        # customer in multiple groups, so its customer counts must
+        # not be summed across all groups.
+        mart_customers = dataframe["customer_id"].nunique()
 
         mart_average = (
             mart_revenue / mart_customers
             if mart_customers > 0 else 0
         )
 
+        mart_churned = int(
+            dataframe["is_churned"].astype(bool).sum()
+        )
+
         mart_churn = (
-            (
-                revenue_mart["churn_rate_pct"]
-                * revenue_mart["total_customers"]
-            ).sum()
-            / mart_customers
+            mart_churned / mart_customers * 100
             if mart_customers > 0 else 0
         )
 
         col1, col2, col3 = st.columns(3)
 
         with col1:
-
             render_kpi(
                 "DBT MART REVENUE",
                 format_currency(mart_revenue),
@@ -650,19 +637,17 @@ def main():
             )
 
         with col2:
-
             render_kpi(
                 "DBT MART CUSTOMERS",
                 f"{mart_customers:,.0f}",
-                "Customers represented in revenue mart",
+                "Unique customers in Customer 360",
             )
 
         with col3:
-
             render_kpi(
                 "DBT MART CHURN RATE",
                 f"{mart_churn:.1f}%",
-                "Weighted source churn rate",
+                "Source-labelled churn rate",
             )
 
         mart_dimension = st.selectbox(
@@ -674,28 +659,51 @@ def main():
             ],
         )
 
+        # Revenue can be aggregated from the mart. Unique customer
+        # counts are calculated from Customer 360 to avoid duplicates.
         mart_summary = (
             revenue_mart.groupby(mart_dimension, as_index=False)
             .agg(
-                total_annual_revenue=("total_annual_revenue", "sum"),
-                total_customers=("total_customers", "sum"),
+                total_annual_revenue=(
+                    "total_annual_revenue",
+                    "sum",
+                ),
             )
-            .sort_values(
-                "total_annual_revenue",
-                ascending=False,
+        )
+
+        unique_customers = (
+            dataframe.groupby(mart_dimension, as_index=False)
+            .agg(
+                total_customers=("customer_id", "nunique"),
             )
+        )
+
+        mart_summary = mart_summary.merge(
+            unique_customers,
+            on=mart_dimension,
+            how="left",
+        )
+
+        mart_summary = mart_summary.sort_values(
+            "total_annual_revenue",
+            ascending=False,
         )
 
         fig_mart = px.bar(
             mart_summary,
             x=mart_dimension,
             y="total_annual_revenue",
-            title=f"dbt Annual Revenue by {mart_dimension.replace('_', ' ').title()}",
+            title=(
+                "dbt Annual Revenue by "
+                f"{mart_dimension.replace('_', ' ').title()}"
+            ),
             text_auto=".2s",
             color_discrete_sequence=["#234D78"],
             labels={
                 "total_annual_revenue": "Annual Revenue (USD)",
-                mart_dimension: mart_dimension.replace("_", " ").title(),
+                mart_dimension: mart_dimension.replace(
+                    "_", " "
+                ).title(),
             },
         )
 
@@ -851,7 +859,6 @@ def main():
         col1, col2, col3, col4 = st.columns(4)
 
         with col1:
-
             render_kpi(
                 "HIGH-RISK CUSTOMERS",
                 f"{high_risk:,}",
@@ -859,7 +866,6 @@ def main():
             )
 
         with col2:
-
             render_kpi(
                 "MEDIUM-RISK CUSTOMERS",
                 f"{medium_risk:,}",
@@ -867,7 +873,6 @@ def main():
             )
 
         with col3:
-
             render_kpi(
                 "LOW-RISK CUSTOMERS",
                 f"{low_risk:,}",
@@ -875,7 +880,6 @@ def main():
             )
 
         with col4:
-
             render_kpi(
                 "AVERAGE CHURN PROBABILITY",
                 f"{avg_probability:.1f}%",
@@ -1045,10 +1049,6 @@ def main():
         },
     )
 
-    # -----------------------------------------------------
-    # FOOTER
-    # -----------------------------------------------------
-
     st.markdown(
         """
         <div class="footer">
@@ -1061,6 +1061,230 @@ def main():
         """,
         unsafe_allow_html=True,
     )
+
+
+# =========================================================
+# AI ANALYTICS ASSISTANT TAB
+# =========================================================
+
+def process_assistant_question(question):
+
+    question = question.strip()
+
+    if not question:
+        return
+
+    st.session_state.assistant_messages.append(
+        {
+            "role": "user",
+            "content": question,
+        }
+    )
+
+    try:
+
+        result = answer_question(question)
+
+        assistant_message = {
+            "role": "assistant",
+            "content": result["answer"],
+            "data": result.get("data", pd.DataFrame()),
+        }
+
+    except Exception as error:
+
+        assistant_message = {
+            "role": "assistant",
+            "content": (
+                "I encountered an error while processing your question. "
+                f"Details: {error}"
+            ),
+            "data": pd.DataFrame(),
+        }
+
+    st.session_state.assistant_messages.append(
+        assistant_message
+    )
+
+
+def render_assistant_response(message):
+
+    st.markdown(message["content"])
+
+    result_data = message.get("data")
+
+    if isinstance(result_data, pd.DataFrame) and not result_data.empty:
+
+        st.dataframe(
+            result_data,
+            width="stretch",
+            hide_index=True,
+        )
+
+
+def render_assistant_tab():
+
+    st.markdown(
+        """
+        <div class="assistant-intro">
+            <h3>🤖 Your Customer Analytics Assistant</h3>
+            <p>
+                Ask business questions about customers, revenue,
+                acquisition channels, industries and predicted churn risk.
+                The assistant queries your local DuckDB analytics database
+                using predefined read-only SQL templates.
+            </p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    st.caption(
+        "This is a rule-based natural-language analytics assistant. "
+        "It does not use an external LLM or require an API key."
+    )
+
+    # Initialize conversation history
+    if "assistant_messages" not in st.session_state:
+        st.session_state.assistant_messages = []
+
+    # Clear conversation
+    top_left, top_right = st.columns([5, 1])
+
+    with top_right:
+
+        if st.button(
+            "Clear chat",
+            width="stretch",
+        ):
+            st.session_state.assistant_messages = []
+            st.rerun()
+
+    # Suggested questions
+    st.markdown("**Try asking:**")
+
+    question_columns = st.columns(3)
+
+    selected_question = None
+
+    for index, question in enumerate(SUGGESTED_QUESTIONS):
+
+        with question_columns[index % 3]:
+
+            if st.button(
+                question,
+                key=f"suggested_question_{index}",
+                width="stretch",
+            ):
+                selected_question = question
+
+    # Display previous conversation
+    for message in st.session_state.assistant_messages:
+
+        with st.chat_message(message["role"]):
+
+            if message["role"] == "assistant":
+                render_assistant_response(message)
+            else:
+                st.markdown(message["content"])
+
+    # Chat input
+    typed_question = st.chat_input(
+        "Ask a question about your customers or revenue..."
+    )
+
+    question_to_process = (
+        typed_question or selected_question
+    )
+
+    if question_to_process:
+
+        process_assistant_question(question_to_process)
+
+        # Display the latest response immediately
+        latest_user_message = st.session_state.assistant_messages[-2]
+        latest_assistant_message = st.session_state.assistant_messages[-1]
+
+        with st.chat_message("user"):
+            st.markdown(latest_user_message["content"])
+
+        with st.chat_message("assistant"):
+            render_assistant_response(latest_assistant_message)
+
+    st.markdown("---")
+
+    st.caption(
+        "Data source: DuckDB Customer 360 and customer-level churn "
+        "predictions. All database queries use predefined read-only "
+        "templates. Synthetic demonstration data is used."
+    )
+
+
+# =========================================================
+# MAIN APPLICATION
+# =========================================================
+
+def main():
+
+    # -----------------------------------------------------
+    # HEADER
+    # -----------------------------------------------------
+
+    st.markdown(
+        """
+        <div class="main-header">
+            <div class="header-tag">
+                CUSTOMER ANALYTICS PLATFORM
+            </div>
+            <h1>Customer 360 | Revenue Intelligence</h1>
+            <p>
+                A unified view of customer performance, revenue,
+                engagement and predictive retention insights.
+            </p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    # -----------------------------------------------------
+    # LOAD DATA
+    # -----------------------------------------------------
+
+    try:
+
+        dataframe, revenue_mart = load_customer_data()
+
+    except (FileNotFoundError, duckdb.Error) as error:
+
+        st.error(str(error))
+        st.stop()
+
+    if dataframe.empty:
+
+        st.warning("No customer records are available.")
+        st.stop()
+
+    # -----------------------------------------------------
+    # APPLICATION TABS
+    # -----------------------------------------------------
+
+    dashboard_tab, assistant_tab = st.tabs(
+        [
+            "📊 Revenue Intelligence",
+            "🤖 AI Analytics Assistant",
+        ]
+    )
+
+    with dashboard_tab:
+
+        render_dashboard(
+            dataframe,
+            revenue_mart,
+        )
+
+    with assistant_tab:
+
+        render_assistant_tab()
 
 
 if __name__ == "__main__":

@@ -8,12 +8,7 @@ import duckdb
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
-DATABASE_FILE = (
-    PROJECT_ROOT
-    / "dbt_project"
-    / "customer_360_analytics.duckdb"
-)
-
+DATABASE_FILE = PROJECT_ROOT / "customer_360_analytics.duckdb"
 
 def main():
     """Check that both Gold tables exist and contain records."""

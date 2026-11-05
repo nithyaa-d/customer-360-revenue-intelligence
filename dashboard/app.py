@@ -3,6 +3,7 @@
 
 from pathlib import Path
 
+import duckdb
 import pandas as pd
 import plotly.express as px
 import streamlit as st
@@ -14,8 +15,10 @@ import streamlit as st
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
-DATA_FILE = (
-    PROJECT_ROOT / "data" / "processed" / "customer_360.csv"
+DATABASE_FILE = PROJECT_ROOT / "customer_360_analytics.duckdb"
+
+PREDICTIONS_FILE = (
+    PROJECT_ROOT / "data" / "processed" / "churn_predictions.csv"
 )
 
 FILTER_COLUMNS = [
@@ -55,8 +58,6 @@ st.markdown(
         background: transparent;
     }
 
-    /* Dashboard header */
-
     .main-header {
         background: linear-gradient(120deg, #142B4A, #234D78);
         padding: 34px 38px;
@@ -86,8 +87,6 @@ st.markdown(
         margin: 0 !important;
     }
 
-    /* Section headings */
-
     .section-title {
         color: #1E293B;
         font-size: 21px;
@@ -95,8 +94,6 @@ st.markdown(
         margin-top: 22px;
         margin-bottom: 16px;
     }
-
-    /* KPI cards */
 
     .kpi-card {
         background: #FFFFFF;
@@ -126,8 +123,6 @@ st.markdown(
         font-size: 11px;
     }
 
-    /* Filter panel */
-
     div[data-testid="stExpander"] {
         background: #FFFFFF;
         border: 1px solid #E2E8F0;
@@ -139,15 +134,11 @@ st.markdown(
         font-weight: 600;
     }
 
-    /* Buttons */
-
     div[data-testid="stButton"] button {
         border-radius: 8px;
         min-height: 42px;
         font-weight: 600;
     }
-
-    /* Footer */
 
     .footer {
         text-align: center;
@@ -172,26 +163,68 @@ st.markdown(
 
 
 # =========================================================
-# LOAD CUSTOMER DATA
+# LOAD CUSTOMER DATA FROM DBT / DUCKDB
 # =========================================================
 
 @st.cache_data
 def load_customer_data():
 
-    if not DATA_FILE.exists():
+    if not DATABASE_FILE.exists():
         raise FileNotFoundError(
-            "Customer 360 dataset not found. "
-            "Run the ingestion and transformation pipelines first."
+            "DuckDB database not found. "
+            "Run dbt models before starting the dashboard."
         )
 
-    dataframe = pd.read_csv(DATA_FILE)
+    connection = duckdb.connect(
+        str(DATABASE_FILE),
+        read_only=True,
+    )
+
+    try:
+        dataframe = connection.execute(
+            "SELECT * FROM main.dim_customer_360"
+        ).fetchdf()
+
+        revenue_mart = connection.execute(
+            "SELECT * FROM main.fct_customer_revenue"
+        ).fetchdf()
+
+    finally:
+        connection.close()
+
+    # Load customer-level ML predictions
+    if PREDICTIONS_FILE.exists():
+
+        predictions = pd.read_csv(PREDICTIONS_FILE)
+
+        prediction_columns = [
+            "customer_id",
+            "churn_probability",
+            "predicted_churn",
+            "risk_category",
+        ]
+
+        predictions = predictions[prediction_columns]
+
+        dataframe = dataframe.merge(
+            predictions,
+            on="customer_id",
+            how="left",
+            validate="one_to_one",
+        )
+
+    else:
+
+        dataframe["churn_probability"] = pd.NA
+        dataframe["predicted_churn"] = pd.NA
+        dataframe["risk_category"] = "Unavailable"
 
     dataframe["signup_date"] = pd.to_datetime(
         dataframe["signup_date"],
         errors="coerce",
     )
 
-    return dataframe
+    return dataframe, revenue_mart
 
 
 # =========================================================
@@ -265,13 +298,30 @@ def initialize_filter_state(dataframe):
             dataframe[column].dropna().unique().tolist()
         )
 
-        st.session_state[f"all_{column}"] = options
+        state_key = f"all_{column}"
+        draft_key = f"draft_{column}"
+        applied_key = f"applied_{column}"
 
-        if f"draft_{column}" not in st.session_state:
-            st.session_state[f"draft_{column}"] = options.copy()
+        st.session_state[state_key] = options
 
-        if f"applied_{column}" not in st.session_state:
-            st.session_state[f"applied_{column}"] = options.copy()
+        if draft_key not in st.session_state:
+            st.session_state[draft_key] = options.copy()
+
+        if applied_key not in st.session_state:
+            st.session_state[applied_key] = options.copy()
+
+        # Keep selections valid if source data changes
+        st.session_state[draft_key] = [
+            value
+            for value in st.session_state[draft_key]
+            if value in options
+        ]
+
+        st.session_state[applied_key] = [
+            value
+            for value in st.session_state[applied_key]
+            if value in options
+        ]
 
 
 def apply_filters():
@@ -306,24 +356,35 @@ def main():
     st.markdown(
         """
         <div class="main-header">
-            <div class="header-tag">CUSTOMER ANALYTICS PLATFORM</div>
+            <div class="header-tag">
+                CUSTOMER ANALYTICS PLATFORM
+            </div>
             <h1>Customer 360 | Revenue Intelligence</h1>
-            <p>A unified view of customer performance, revenue,
-            engagement and retention insights.</p>
+            <p>
+                A unified view of customer performance, revenue,
+                engagement and predictive retention insights.
+            </p>
         </div>
         """,
         unsafe_allow_html=True,
     )
 
     # -----------------------------------------------------
-    # DATA
+    # LOAD DATA
     # -----------------------------------------------------
 
     try:
-        dataframe = load_customer_data()
 
-    except FileNotFoundError as error:
+        dataframe, revenue_mart = load_customer_data()
+
+    except (FileNotFoundError, duckdb.Error) as error:
+
         st.error(str(error))
+        st.stop()
+
+    if dataframe.empty:
+
+        st.warning("No customer records are available.")
         st.stop()
 
     initialize_filter_state(dataframe)
@@ -351,9 +412,7 @@ def main():
 
             st.multiselect(
                 "Acquisition Channel",
-                options=st.session_state[
-                    "all_acquisition_channel"
-                ],
+                options=st.session_state["all_acquisition_channel"],
                 key="draft_acquisition_channel",
             )
 
@@ -414,7 +473,7 @@ def main():
         st.stop()
 
     # -----------------------------------------------------
-    # KPI CALCULATIONS
+    # BUSINESS OVERVIEW
     # -----------------------------------------------------
 
     total_customers = filtered["customer_id"].nunique()
@@ -435,10 +494,6 @@ def main():
         if total_customers > 0 else 0
     )
 
-    # -----------------------------------------------------
-    # BUSINESS OVERVIEW
-    # -----------------------------------------------------
-
     st.markdown(
         '<div class="section-title">Business Overview</div>',
         unsafe_allow_html=True,
@@ -447,6 +502,7 @@ def main():
     col1, col2, col3, col4 = st.columns(4)
 
     with col1:
+
         render_kpi(
             "TOTAL CUSTOMERS",
             f"{total_customers:,}",
@@ -454,6 +510,7 @@ def main():
         )
 
     with col2:
+
         render_kpi(
             "ANNUAL CUSTOMER REVENUE",
             format_currency(total_revenue),
@@ -461,6 +518,7 @@ def main():
         )
 
     with col3:
+
         render_kpi(
             "AVERAGE REVENUE / CUSTOMER",
             format_currency(average_revenue),
@@ -468,10 +526,11 @@ def main():
         )
 
     with col4:
+
         render_kpi(
-            "CUSTOMER CHURN RATE",
+            "SOURCE CHURN RATE",
             f"{churn_rate:.1f}%",
-            f"{churned_customers:,} churned customers",
+            f"{churned_customers:,} source-labelled churned customers",
         )
 
     # -----------------------------------------------------
@@ -483,8 +542,7 @@ def main():
         unsafe_allow_html=True,
     )
 
-    left, right = st.columns(2)
-
+    # Revenue by country: filtered Customer 360 data
     country_revenue = (
         filtered.groupby("country", as_index=False)
         .agg(
@@ -493,6 +551,18 @@ def main():
         )
         .sort_values("total_revenue", ascending=False)
     )
+
+    # Revenue by acquisition channel
+    channel_revenue = (
+        filtered.groupby("acquisition_channel", as_index=False)
+        .agg(
+            total_revenue=("annual_revenue", "sum"),
+            customers=("customer_id", "nunique"),
+        )
+        .sort_values("total_revenue", ascending=False)
+    )
+
+    left, right = st.columns(2)
 
     with left:
 
@@ -514,18 +584,6 @@ def main():
             width="stretch",
         )
 
-    channel_revenue = (
-        filtered.groupby(
-            "acquisition_channel",
-            as_index=False,
-        )
-        .agg(
-            total_revenue=("annual_revenue", "sum"),
-            customers=("customer_id", "nunique"),
-        )
-        .sort_values("total_revenue", ascending=False)
-    )
-
     with right:
 
         fig_channel = px.bar(
@@ -543,6 +601,106 @@ def main():
 
         st.plotly_chart(
             style_chart(fig_channel),
+            width="stretch",
+        )
+
+    # -----------------------------------------------------
+    # DBT REVENUE MART
+    # -----------------------------------------------------
+
+    st.markdown(
+        '<div class="section-title">dbt Revenue Intelligence</div>',
+        unsafe_allow_html=True,
+    )
+
+    st.caption(
+        "Aggregated business metrics from the dbt Gold revenue mart. "
+        "The figures below reflect the complete mart, independent "
+        "of the dashboard filters."
+    )
+
+    if not revenue_mart.empty:
+
+        mart_revenue = revenue_mart["total_annual_revenue"].sum()
+
+        mart_customers = revenue_mart["total_customers"].sum()
+
+        mart_average = (
+            mart_revenue / mart_customers
+            if mart_customers > 0 else 0
+        )
+
+        mart_churn = (
+            (
+                revenue_mart["churn_rate_pct"]
+                * revenue_mart["total_customers"]
+            ).sum()
+            / mart_customers
+            if mart_customers > 0 else 0
+        )
+
+        col1, col2, col3 = st.columns(3)
+
+        with col1:
+
+            render_kpi(
+                "DBT MART REVENUE",
+                format_currency(mart_revenue),
+                "Aggregated annual customer revenue",
+            )
+
+        with col2:
+
+            render_kpi(
+                "DBT MART CUSTOMERS",
+                f"{mart_customers:,.0f}",
+                "Customers represented in revenue mart",
+            )
+
+        with col3:
+
+            render_kpi(
+                "DBT MART CHURN RATE",
+                f"{mart_churn:.1f}%",
+                "Weighted source churn rate",
+            )
+
+        mart_dimension = st.selectbox(
+            "Explore dbt revenue by",
+            [
+                "country",
+                "industry",
+                "acquisition_channel",
+            ],
+        )
+
+        mart_summary = (
+            revenue_mart.groupby(mart_dimension, as_index=False)
+            .agg(
+                total_annual_revenue=("total_annual_revenue", "sum"),
+                total_customers=("total_customers", "sum"),
+            )
+            .sort_values(
+                "total_annual_revenue",
+                ascending=False,
+            )
+        )
+
+        fig_mart = px.bar(
+            mart_summary,
+            x=mart_dimension,
+            y="total_annual_revenue",
+            title=f"dbt Annual Revenue by {mart_dimension.replace('_', ' ').title()}",
+            text_auto=".2s",
+            color_discrete_sequence=["#234D78"],
+            labels={
+                "total_annual_revenue": "Annual Revenue (USD)",
+                mart_dimension: mart_dimension.replace("_", " ").title(),
+            },
+        )
+
+        st.plotly_chart(
+            style_chart(fig_mart),
             width="stretch",
         )
 
@@ -660,6 +818,147 @@ def main():
     )
 
     # -----------------------------------------------------
+    # CHURN INTELLIGENCE
+    # -----------------------------------------------------
+
+    st.markdown(
+        '<div class="section-title">Predictive Churn Intelligence</div>',
+        unsafe_allow_html=True,
+    )
+
+    scored_customers = filtered[
+        filtered["churn_probability"].notna()
+    ].copy()
+
+    if not scored_customers.empty:
+
+        high_risk = int(
+            (scored_customers["risk_category"] == "High").sum()
+        )
+
+        medium_risk = int(
+            (scored_customers["risk_category"] == "Medium").sum()
+        )
+
+        low_risk = int(
+            (scored_customers["risk_category"] == "Low").sum()
+        )
+
+        avg_probability = (
+            scored_customers["churn_probability"].mean() * 100
+        )
+
+        col1, col2, col3, col4 = st.columns(4)
+
+        with col1:
+
+            render_kpi(
+                "HIGH-RISK CUSTOMERS",
+                f"{high_risk:,}",
+                "Predicted risk category: High",
+            )
+
+        with col2:
+
+            render_kpi(
+                "MEDIUM-RISK CUSTOMERS",
+                f"{medium_risk:,}",
+                "Predicted risk category: Medium",
+            )
+
+        with col3:
+
+            render_kpi(
+                "LOW-RISK CUSTOMERS",
+                f"{low_risk:,}",
+                "Predicted risk category: Low",
+            )
+
+        with col4:
+
+            render_kpi(
+                "AVERAGE CHURN PROBABILITY",
+                f"{avg_probability:.1f}%",
+                "Average model-predicted probability",
+            )
+
+        risk_summary = (
+            scored_customers["risk_category"]
+            .value_counts()
+            .reindex(["High", "Medium", "Low"], fill_value=0)
+            .rename_axis("risk_category")
+            .reset_index(name="customer_count")
+        )
+
+        left, right = st.columns(2)
+
+        with left:
+
+            fig_risk = px.pie(
+                risk_summary,
+                names="risk_category",
+                values="customer_count",
+                title="Predicted Customer Risk Distribution",
+                hole=0.55,
+                color="risk_category",
+                color_discrete_map={
+                    "High": "#D85B63",
+                    "Medium": "#E5A13B",
+                    "Low": "#17A589",
+                },
+            )
+
+            st.plotly_chart(
+                style_chart(fig_risk),
+                width="stretch",
+            )
+
+        with right:
+
+            risk_revenue = (
+                scored_customers.groupby(
+                    "risk_category",
+                    as_index=False,
+                )
+                .agg(
+                    customers=("customer_id", "nunique"),
+                    annual_revenue=("annual_revenue", "sum"),
+                )
+            )
+
+            fig_risk_revenue = px.bar(
+                risk_revenue,
+                x="risk_category",
+                y="annual_revenue",
+                title="Annual Revenue by Predicted Risk",
+                text_auto=".2s",
+                color="risk_category",
+                color_discrete_map={
+                    "High": "#D85B63",
+                    "Medium": "#E5A13B",
+                    "Low": "#17A589",
+                },
+            )
+
+            st.plotly_chart(
+                style_chart(fig_risk_revenue),
+                width="stretch",
+            )
+
+        st.caption(
+            "Model predictions are based on synthetic portfolio data. "
+            "Risk thresholds are illustrative and are not calibrated "
+            "production intervention thresholds."
+        )
+
+    else:
+
+        st.info(
+            "Churn predictions are not available. "
+            "Run the churn training and scoring pipelines first."
+        )
+
+    # -----------------------------------------------------
     # CUSTOMER 360 EXPLORER
     # -----------------------------------------------------
 
@@ -680,18 +979,20 @@ def main():
         search_value = search.lower()
 
         display_data = display_data[
-            display_data["customer_id"].astype(str).str.lower().str.contains(
-                search_value,
-                na=False,
-            )
-            | display_data["customer_name"].astype(str).str.lower().str.contains(
-                search_value,
-                na=False,
-            )
-            | display_data["country"].astype(str).str.lower().str.contains(
-                search_value,
-                na=False,
-            )
+            display_data["customer_id"]
+            .astype(str)
+            .str.lower()
+            .str.contains(search_value, na=False)
+            |
+            display_data["customer_name"]
+            .astype(str)
+            .str.lower()
+            .str.contains(search_value, na=False)
+            |
+            display_data["country"]
+            .astype(str)
+            .str.lower()
+            .str.contains(search_value, na=False)
         ]
 
     display_columns = [
@@ -707,6 +1008,9 @@ def main():
         "customer_lifecycle_stage",
         "customer_value_segment",
         "days_since_last_activity",
+        "churn_probability",
+        "predicted_churn",
+        "risk_category",
     ]
 
     available_columns = [
@@ -727,6 +1031,18 @@ def main():
         ),
         width="stretch",
         hide_index=True,
+        column_config={
+            "annual_revenue": st.column_config.NumberColumn(
+                "Annual Revenue (USD)",
+                format="$%.2f",
+            ),
+            "churn_probability": st.column_config.ProgressColumn(
+                "Predicted Churn Probability",
+                min_value=0,
+                max_value=1,
+                format="%.1%%",
+            ),
+        },
     )
 
     # -----------------------------------------------------
@@ -738,11 +1054,14 @@ def main():
         <div class="footer">
             CUSTOMER 360 REVENUE INTELLIGENCE
             | PORTFOLIO PROJECT
-            | PYTHON · PANDAS · PLOTLY · STREAMLIT
+            | PYTHON · SQL · DUCKDB · DBT · SCIKIT-LEARN · PLOTLY · STREAMLIT
+            <br>
+            Synthetic data used for demonstration purposes.
         </div>
         """,
         unsafe_allow_html=True,
     )
+
 
 if __name__ == "__main__":
     main()

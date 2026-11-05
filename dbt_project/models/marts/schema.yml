@@ -61,7 +61,7 @@ models:
                   - At Risk
                   - Churned
   
-    - name: fct_customer_revenue
+  - name: fct_customer_revenue
       description: "Revenue and customer metrics grouped by country, industry and acquisition channel."
   
       columns:

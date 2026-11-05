@@ -48,7 +48,7 @@ st.set_page_config(
 
 
 # =========================================================
-# CUSTOM CSS
+# CUSTOM CSS - LIGHT THEME
 # =========================================================
 
 st.markdown(
@@ -68,6 +68,8 @@ st.markdown(
     [data-testid="stHeader"] {
         background: transparent;
     }
+
+    /* Main header */
 
     .main-header {
         background: linear-gradient(120deg, #142B4A, #234D78);
@@ -98,6 +100,8 @@ st.markdown(
         margin: 0 !important;
     }
 
+    /* Section headings */
+
     .section-title {
         color: #1E293B;
         font-size: 21px;
@@ -105,6 +109,8 @@ st.markdown(
         margin-top: 22px;
         margin-bottom: 16px;
     }
+
+    /* KPI cards */
 
     .kpi-card {
         background: #FFFFFF;
@@ -134,6 +140,8 @@ st.markdown(
         font-size: 11px;
     }
 
+    /* Expanders */
+
     div[data-testid="stExpander"] {
         background: #FFFFFF;
         border: 1px solid #E2E8F0;
@@ -145,11 +153,24 @@ st.markdown(
         font-weight: 600;
     }
 
+    /* Buttons */
+
     div[data-testid="stButton"] button {
         border-radius: 8px;
         min-height: 42px;
         font-weight: 600;
+        color: #17365D;
+        border-color: #CBD5E1;
+        background-color: #FFFFFF;
     }
+
+    div[data-testid="stButton"] button:hover {
+        color: #17365D;
+        border-color: #3478C7;
+        background-color: #EFF6FF;
+    }
+
+    /* Assistant introduction */
 
     .assistant-intro {
         background: #FFFFFF;
@@ -160,14 +181,94 @@ st.markdown(
     }
 
     .assistant-intro h3 {
-        color: #172B4D;
+        color: #172B4D !important;
         margin-top: 0;
     }
 
     .assistant-intro p {
-        color: #64748B;
+        color: #475569 !important;
         margin-bottom: 0;
     }
+
+    /* Streamlit tabs - high contrast light theme */
+
+    .stTabs [data-baseweb="tab-list"] {
+        background-color: #E8EEF6 !important;
+        border-radius: 10px;
+        padding: 6px;
+        gap: 8px;
+        border-bottom: none !important;
+    }
+
+    .stTabs [data-baseweb="tab"] {
+        background-color: #E8EEF6 !important;
+        color: #1E293B !important;
+        border-radius: 8px;
+        font-weight: 700 !important;
+        padding: 12px 20px;
+        border: 1px solid transparent !important;
+    }
+
+    .stTabs [data-baseweb="tab"] p {
+        color: #1E293B !important;
+        font-weight: 700 !important;
+    }
+
+    .stTabs [data-baseweb="tab"]:hover {
+        background-color: #DCE6F2 !important;
+    }
+
+    .stTabs [data-baseweb="tab"][aria-selected="true"] {
+        background-color: #FFFFFF !important;
+        color: #17365D !important;
+        border: 1px solid #CBD5E1 !important;
+        border-bottom: 3px solid #3478C7 !important;
+    }
+
+    .stTabs [data-baseweb="tab"][aria-selected="true"] p {
+        color: #17365D !important;
+    }
+
+    .stTabs [data-baseweb="tab-highlight"] {
+        background-color: #3478C7 !important;
+    }
+
+    .stTabs [data-baseweb="tab-border"] {
+        background-color: transparent !important;
+    }
+
+    /* Chat text and containers */
+
+    [data-testid="stChatMessage"] {
+        background-color: #FFFFFF;
+        border: 1px solid #E2E8F0;
+        border-radius: 12px;
+    }
+
+    [data-testid="stChatMessage"] p {
+        color: #1E293B !important;
+    }
+
+    /* Inputs */
+
+    [data-baseweb="input"] {
+        background-color: #FFFFFF !important;
+    }
+
+    [data-baseweb="select"] {
+        background-color: #FFFFFF !important;
+    }
+
+    [data-testid="stTextInput"] input {
+        color: #1E293B !important;
+        background-color: #FFFFFF !important;
+    }
+
+    [data-testid="stChatInput"] textarea {
+        color: #1E293B !important;
+    }
+
+    /* Footer */
 
     .footer {
         text-align: center;
@@ -221,7 +322,6 @@ def load_customer_data():
     finally:
         connection.close()
 
-    # Load customer-level ML predictions
     if PREDICTIONS_FILE.exists():
 
         predictions = pd.read_csv(PREDICTIONS_FILE)
@@ -379,9 +479,7 @@ def render_dashboard(dataframe, revenue_mart):
 
     initialize_filter_state(dataframe)
 
-    # -----------------------------------------------------
     # FILTER PANEL
-    # -----------------------------------------------------
 
     with st.expander("⚙️ Dashboard Filters", expanded=False):
 
@@ -423,7 +521,6 @@ def render_dashboard(dataframe, revenue_mart):
         button_left, button_right, _ = st.columns([1, 1, 4])
 
         with button_left:
-
             st.button(
                 "Apply Filters",
                 type="primary",
@@ -432,16 +529,13 @@ def render_dashboard(dataframe, revenue_mart):
             )
 
         with button_right:
-
             st.button(
                 "Reset Filters",
                 width="stretch",
                 on_click=reset_filters,
             )
 
-    # -----------------------------------------------------
     # FILTERED DATA
-    # -----------------------------------------------------
 
     filtered = dataframe.copy()
 
@@ -460,9 +554,7 @@ def render_dashboard(dataframe, revenue_mart):
         )
         return
 
-    # -----------------------------------------------------
     # BUSINESS OVERVIEW
-    # -----------------------------------------------------
 
     total_customers = filtered["customer_id"].nunique()
 
@@ -517,9 +609,7 @@ def render_dashboard(dataframe, revenue_mart):
             f"{churned_customers:,} source-labelled churned customers",
         )
 
-    # -----------------------------------------------------
     # REVENUE PERFORMANCE
-    # -----------------------------------------------------
 
     st.markdown(
         '<div class="section-title">Revenue Performance</div>',
@@ -586,9 +676,7 @@ def render_dashboard(dataframe, revenue_mart):
             width="stretch",
         )
 
-    # -----------------------------------------------------
     # DBT REVENUE MART
-    # -----------------------------------------------------
 
     st.markdown(
         '<div class="section-title">dbt Revenue Intelligence</div>',
@@ -607,10 +695,6 @@ def render_dashboard(dataframe, revenue_mart):
             "total_annual_revenue"
         ].sum()
 
-        # Count unique customers from the Customer 360 dimension.
-        # The three-dimensional revenue mart can contain the same
-        # customer in multiple groups, so its customer counts must
-        # not be summed across all groups.
         mart_customers = dataframe["customer_id"].nunique()
 
         mart_average = (
@@ -659,8 +743,6 @@ def render_dashboard(dataframe, revenue_mart):
             ],
         )
 
-        # Revenue can be aggregated from the mart. Unique customer
-        # counts are calculated from Customer 360 to avoid duplicates.
         mart_summary = (
             revenue_mart.groupby(mart_dimension, as_index=False)
             .agg(
@@ -712,9 +794,7 @@ def render_dashboard(dataframe, revenue_mart):
             width="stretch",
         )
 
-    # -----------------------------------------------------
     # CUSTOMER SEGMENTATION
-    # -----------------------------------------------------
 
     st.markdown(
         '<div class="section-title">Customer Segmentation</div>',
@@ -774,9 +854,7 @@ def render_dashboard(dataframe, revenue_mart):
             width="stretch",
         )
 
-    # -----------------------------------------------------
     # CUSTOMER VALUE DISTRIBUTION
-    # -----------------------------------------------------
 
     st.markdown(
         '<div class="section-title">Customer Value Distribution</div>',
@@ -825,9 +903,7 @@ def render_dashboard(dataframe, revenue_mart):
         width="stretch",
     )
 
-    # -----------------------------------------------------
     # CHURN INTELLIGENCE
-    # -----------------------------------------------------
 
     st.markdown(
         '<div class="section-title">Predictive Churn Intelligence</div>',
@@ -962,9 +1038,7 @@ def render_dashboard(dataframe, revenue_mart):
             "Run the churn training and scoring pipelines first."
         )
 
-    # -----------------------------------------------------
     # CUSTOMER 360 EXPLORER
-    # -----------------------------------------------------
 
     st.markdown(
         '<div class="section-title">Customer 360 Explorer</div>',
@@ -1064,7 +1138,7 @@ def render_dashboard(dataframe, revenue_mart):
 
 
 # =========================================================
-# AI ANALYTICS ASSISTANT TAB
+# AI ANALYTICS ASSISTANT
 # =========================================================
 
 def process_assistant_question(question):
@@ -1144,11 +1218,9 @@ def render_assistant_tab():
         "It does not use an external LLM or require an API key."
     )
 
-    # Initialize conversation history
     if "assistant_messages" not in st.session_state:
         st.session_state.assistant_messages = []
 
-    # Clear conversation
     top_left, top_right = st.columns([5, 1])
 
     with top_right:
@@ -1160,7 +1232,6 @@ def render_assistant_tab():
             st.session_state.assistant_messages = []
             st.rerun()
 
-    # Suggested questions
     st.markdown("**Try asking:**")
 
     question_columns = st.columns(3)
@@ -1178,7 +1249,6 @@ def render_assistant_tab():
             ):
                 selected_question = question
 
-    # Display previous conversation
     for message in st.session_state.assistant_messages:
 
         with st.chat_message(message["role"]):
@@ -1188,22 +1258,23 @@ def render_assistant_tab():
             else:
                 st.markdown(message["content"])
 
-    # Chat input
     typed_question = st.chat_input(
         "Ask a question about your customers or revenue..."
     )
 
-    question_to_process = (
-        typed_question or selected_question
-    )
+    question_to_process = typed_question or selected_question
 
     if question_to_process:
 
         process_assistant_question(question_to_process)
 
-        # Display the latest response immediately
-        latest_user_message = st.session_state.assistant_messages[-2]
-        latest_assistant_message = st.session_state.assistant_messages[-1]
+        latest_user_message = (
+            st.session_state.assistant_messages[-2]
+        )
+
+        latest_assistant_message = (
+            st.session_state.assistant_messages[-1]
+        )
 
         with st.chat_message("user"):
             st.markdown(latest_user_message["content"])
@@ -1226,10 +1297,6 @@ def render_assistant_tab():
 
 def main():
 
-    # -----------------------------------------------------
-    # HEADER
-    # -----------------------------------------------------
-
     st.markdown(
         """
         <div class="main-header">
@@ -1246,10 +1313,6 @@ def main():
         unsafe_allow_html=True,
     )
 
-    # -----------------------------------------------------
-    # LOAD DATA
-    # -----------------------------------------------------
-
     try:
 
         dataframe, revenue_mart = load_customer_data()
@@ -1263,10 +1326,6 @@ def main():
 
         st.warning("No customer records are available.")
         st.stop()
-
-    # -----------------------------------------------------
-    # APPLICATION TABS
-    # -----------------------------------------------------
 
     dashboard_tab, assistant_tab = st.tabs(
         [

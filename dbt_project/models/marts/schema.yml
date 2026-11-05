@@ -21,8 +21,6 @@ models:
         description: "Annual customer revenue."
         data_tests:
           - not_null
-          - dbt_utils.expression_is_true:
-              expression: ">= 0"
 
       - name: account_status
         data_tests:

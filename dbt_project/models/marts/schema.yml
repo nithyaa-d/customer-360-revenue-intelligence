@@ -60,31 +60,31 @@ models:
                   - Active
                   - At Risk
                   - Churned
-  
+
   - name: fct_customer_revenue
-      description: "Revenue and customer metrics grouped by country, industry and acquisition channel."
-  
-      columns:
-        - name: country
-          data_tests:
-            - not_null
-  
-        - name: industry
-          data_tests:
-            - not_null
-  
-        - name: acquisition_channel
-          data_tests:
-            - not_null
-  
-        - name: total_customers
-          data_tests:
-            - not_null
-  
-        - name: total_annual_revenue
-          data_tests:
-            - not_null
-  
-        - name: churn_rate_pct
-          data_tests:
-            - not_null
+    description: "Revenue and customer metrics grouped by country, industry and acquisition channel."
+
+    columns:
+      - name: country
+        data_tests:
+          - not_null
+
+      - name: industry
+        data_tests:
+          - not_null
+
+      - name: acquisition_channel
+        data_tests:
+          - not_null
+
+      - name: total_customers
+        data_tests:
+          - not_null
+
+      - name: total_annual_revenue
+        data_tests:
+          - not_null
+
+      - name: churn_rate_pct
+        data_tests:
+          - not_null

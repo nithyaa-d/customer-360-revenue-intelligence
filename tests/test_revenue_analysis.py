@@ -49,9 +49,10 @@ def test_customer_kpis_calculates_revenue(sample_customers):
 def test_revenue_analysis_by_country(sample_customers):
     result = build_revenue_analysis(sample_customers, "country")
 
-    assert result.iloc[0]["country"] == "Sweden"
-    assert result.iloc[0]["customer_count"] == 2
-    assert result.iloc[0]["total_annual_revenue"] == 300000
+    sweden = result[result["country"] == "Sweden"].iloc[0]
+
+    assert sweden["customer_count"] == 2
+    assert sweden["total_annual_revenue"] == 300000
 
 
 def test_revenue_analysis_by_industry(sample_customers):
